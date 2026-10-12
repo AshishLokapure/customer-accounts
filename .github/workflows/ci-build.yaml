@@ -12,8 +12,26 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: accounts
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d accounts"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URI: postgresql://postgres:postgres@localhost:5432/accounts
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -21,24 +39,47 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Initialize containers
+        run: |
+          python - <<'PY'
+          import socket
+          import time
+
+          for attempt in range(30):
+              try:
+                  with socket.create_connection(
+                      ("127.0.0.1", 5432), timeout=1
+                  ):
+                      print("PostgreSQL service is ready.")
+                      break
+              except OSError:
+                  time.sleep(2)
+          else:
+              raise SystemExit(
+                  "PostgreSQL service did not become ready."
+              )
+          PY
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install flake8 pylint nose coverage
+          python -m pip install -r requirements.txt
+          python -m pip install flake8 pylint nose coverage
 
-      - name: Lint with Flake8
-        run: |
-          flake8 service
+      - name: Lint with flake8
+        run: flake8 service
 
       - name: Lint with Pylint
-        run: |
-          pylint service
+        run: pylint service
 
       - name: Run unit tests with nosetests
-        run: |
-          nosetests -v --with-coverage --cover-package=service
+        run: nosetests -v --with-coverage --cover-package=service
 
       - name: Generate coverage report
+        run: coverage report
+
+      - name: Stop containers
+        if: always()
         run: |
-          coverage report
+          docker ps -q --filter "ancestor=postgres:15" |
+            xargs -r docker stop
