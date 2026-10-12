@@ -6,8 +6,8 @@ import os
 
 from flask import Flask
 from flask_cors import CORS
-from flask_talisman import Talisman
 from flask_sqlalchemy import SQLAlchemy
+from flask_talisman import Talisman
 
 db = SQLAlchemy()
 
@@ -24,14 +24,21 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    # Initialize the database
     db.init_app(app)
 
+    # Configure Cross-Origin Resource Sharing
     CORS(app)
-    Talisman(app)
 
+    # Configure HTTP security headers with Flask-Talisman
+    talisman = Talisman(app)
+    app.extensions["talisman"] = talisman
+
+    # Register account API routes
     from service.routes import accounts_bp
     app.register_blueprint(accounts_bp)
 
+    # Create database tables if they do not exist
     with app.app_context():
         db.create_all()
 
